@@ -1,10 +1,12 @@
 @page "/"
 @inject AssetWorkspaceService Workspace
+@using UABEA.Web.Models
 
 <h1>UABEA Web</h1>
 <p class="subtitle">
     Porte experimental do UABEA (nesrak1) para o navegador via Blazor WebAssembly.
-    Nesta primeira versão: abrir um arquivo <code>.assets</code> e listar os objetos dentro dele.
+    Abra um arquivo <code>.assets</code>, veja a lista de objetos e, para
+    texturas em formato não-comprimido, visualize a imagem decodificada.
 </p>
 
 <div class="upload-box">
@@ -31,6 +33,7 @@
                 <th>Tipo</th>
                 <th>Type ID</th>
                 <th>Tamanho (bytes)</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -41,25 +44,53 @@
                     <td>@row.TypeName</td>
                     <td>@row.TypeId</td>
                     <td>@row.ByteSize</td>
+                    <td>
+                        @* TypeId 28 == AssetClassID.Texture2D *@
+                        @if (row.TypeId == 28)
+                        {
+                            <button class="btn-small" @onclick="() => ViewTexture(row)">Ver textura</button>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
 }
 
+@if (selectedTexturePng != null)
+{
+    <div class="texture-preview">
+        <h3>Textura — Path ID @selectedTexturePathId <button class="btn-small" @onclick="ClearTexture">Fechar</button></h3>
+        <img src="@selectedTexturePng" alt="Textura decodificada" />
+    </div>
+}
+else if (!string.IsNullOrEmpty(Workspace.TextureError))
+{
+    <div class="error">@Workspace.TextureError</div>
+}
+
 <footer class="note">
-    <strong>Ainda não incluído nesta versão:</strong> edição/exportação de assets,
-    plugin de texturas (decodificação depende de libs nativas — ispc/crunch/PVRTexLib —
-    que não rodam em WASM sem recompilação para Emscripten), abertura de bundles
-    (.bundle/.unity3d) com múltiplos arquivos internos, e suporte a IL2CPP.
+    <strong>Visualização de texturas:</strong> só formatos não-comprimidos são
+    decodificados nesta versão (RGBA32, RGB24, ARGB32, R8, Alpha8, RGB565,
+    RGBA4444, RFloat/RGFloat/RGBAFloat, RHalf/RGHalf/RGBAHalf). Formatos
+    comprimidos (ETC/ETC2, ASTC, PVRTC, DXT/BC) dependem das libs nativas
+    ispc/crunch/PVRTexLib do UABEA original, que não rodam em WASM sem
+    recompilação via Emscripten — ainda fora do escopo deste porte.
+    <br />
+    <strong>Também ainda não incluído:</strong> edição/exportação de assets,
+    abertura de bundles (.bundle/.unity3d) com múltiplos arquivos internos,
+    texturas "streamed" (dados num .resS externo), e suporte a IL2CPP.
 </footer>
 
 @code {
     private bool isLoading = false;
+    private string? selectedTexturePng;
+    private long? selectedTexturePathId;
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         isLoading = true;
+        ClearTexture();
         StateHasChanged();
 
         var file = e.File;
@@ -76,5 +107,26 @@
 
         isLoading = false;
         StateHasChanged();
+    }
+
+    private void ViewTexture(AssetRow row)
+    {
+        var png = Workspace.TryDecodeTexturePng(row);
+        if (png != null)
+        {
+            selectedTexturePng = "data:image/png;base64," + Convert.ToBase64String(png);
+            selectedTexturePathId = row.PathId;
+        }
+        else
+        {
+            selectedTexturePng = null;
+            selectedTexturePathId = null;
+        }
+    }
+
+    private void ClearTexture()
+    {
+        selectedTexturePng = null;
+        selectedTexturePathId = null;
     }
 }
