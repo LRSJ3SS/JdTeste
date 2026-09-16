@@ -17,7 +17,7 @@
 
     <!-- Mesma lib que o UABEA original usa para parsear .assets/bundle.
          É C# puro (sem P/Invoke), então roda sob Mono-wasm sem alterações. -->
-    <PackageReference Include="AssetsTools.NET" Version="3.0.9" />
+    <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
 
     <!-- Usadas pela lógica original (Logic/, Utils/, Workspace/).
          Ambas são C#/IL puro e costumam funcionar sob WASM. -->
