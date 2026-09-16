@@ -79,34 +79,38 @@ namespace UABEA.Web.Services
         }
 
         private void PopulateRows()
-{
-    if (CurrentFile == null) return;
+        {
+            if (CurrentFile == null) return;
 
-    foreach (var info in CurrentFile.file.AssetInfos)
-    {
-        string typeName = "desconhecido";
-        try
-        {
-            typeName = AssetHelper.FindAssetClassByID(
-                Manager.classDatabase, info.TypeId)?.Name ?? "Type_" + info.TypeId;
-        }
-        catch
-        {
-            typeName = "Type_" + info.TypeId;
-        }
+            foreach (var info in CurrentFile.file.AssetInfos)
+            {
+                string typeName;
+                try
+                {
+                    // TypeId corresponde ao enum AssetClassID (GameObject,
+                    // Transform, MonoBehaviour, etc.) para tipos padrão da
+                    // engine. Não existem "AssetHelper.FindAssetClassByID"
+                    // nem "AssetsManager.classDatabase" na API pública desta
+                    // versão da lib — o nome do tipo vem direto do enum.
+                    typeName = ((AssetClassID)info.TypeId).ToString();
+                }
+                catch
+                {
+                    typeName = "Type_" + info.TypeId;
+                }
 
-        Rows.Add(new AssetRow
-        {
-            PathId = info.PathId,
-            FileId = 0,
-            TypeId = info.TypeId,
-            TypeName = typeName,
-            ByteSize = info.ByteSize,
-            Container = "",
-            Name = ""
-        });
-    }
-}
+                Rows.Add(new AssetRow
+                {
+                    PathId = info.PathId,
+                    FileId = 0,
+                    TypeId = info.TypeId,
+                    TypeName = typeName,
+                    ByteSize = info.ByteSize,
+                    Container = "",
+                    Name = ""
+                });
+            }
+        }
 
         public void Close()
         {
