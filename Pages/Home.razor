@@ -1,0 +1,80 @@
+@page "/"
+@inject AssetWorkspaceService Workspace
+
+<h1>UABEA Web</h1>
+<p class="subtitle">
+    Porte experimental do UABEA (nesrak1) para o navegador via Blazor WebAssembly.
+    Nesta primeira versão: abrir um arquivo <code>.assets</code> e listar os objetos dentro dele.
+</p>
+
+<div class="upload-box">
+    <InputFile OnChange="OnFileSelected" />
+    @if (isLoading)
+    {
+        <span class="loading"> Carregando…</span>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(Workspace.LastError))
+{
+    <div class="error">@Workspace.LastError</div>
+}
+
+@if (Workspace.CurrentFile != null)
+{
+    <h2>@Workspace.CurrentFileName <small>(@Workspace.Rows.Count objetos)</small></h2>
+
+    <table class="asset-table">
+        <thead>
+            <tr>
+                <th>Path ID</th>
+                <th>Tipo</th>
+                <th>Type ID</th>
+                <th>Tamanho (bytes)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Workspace.Rows)
+            {
+                <tr>
+                    <td>@row.PathId</td>
+                    <td>@row.TypeName</td>
+                    <td>@row.TypeId</td>
+                    <td>@row.ByteSize</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<footer class="note">
+    <strong>Ainda não incluído nesta versão:</strong> edição/exportação de assets,
+    plugin de texturas (decodificação depende de libs nativas — ispc/crunch/PVRTexLib —
+    que não rodam em WASM sem recompilação para Emscripten), abertura de bundles
+    (.bundle/.unity3d) com múltiplos arquivos internos, e suporte a IL2CPP.
+</footer>
+
+@code {
+    private bool isLoading = false;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        var file = e.File;
+        // Limite de tamanho: ajuste conforme necessário. Arquivos .assets
+        // grandes (várias centenas de MB) podem estourar a memória do
+        // navegador — isso é uma limitação real do ambiente WASM.
+        const long maxSize = 500L * 1024 * 1024;
+
+        using var stream = file.OpenReadStream(maxAllowedSize: maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        await Workspace.LoadAssetsFromBytesAsync(file.Name, ms.ToArray());
+
+        isLoading = false;
+        StateHasChanged();
+    }
+}
