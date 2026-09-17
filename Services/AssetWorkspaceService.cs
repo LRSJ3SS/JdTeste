@@ -46,8 +46,12 @@ namespace UABEA.Web.Services
             _classPackageLoaded = true;
         }
 
-        // Chamado quando o usuário seleciona um .assets pelo <InputFile>.
+        // Chamado quando o usuário seleciona um arquivo pelo <InputFile>.
         // fileBytes já deve estar carregado em memória (ver Pages/Home.razor).
+        // Detecta automaticamente se é um .assets "solto" ou um AssetBundle
+        // (assinatura "UnityFS"/"UnityRaw"/"UnityWeb" no início do arquivo,
+        // como brody_tex_low.assets, que apesar do nome/extensão é na
+        // verdade um bundle) e usa o caminho de carga correto para cada um.
         public async Task<bool> LoadAssetsFromBytesAsync(string fileName, byte[] fileBytes)
         {
             LastError = null;
@@ -57,17 +61,26 @@ namespace UABEA.Web.Services
             {
                 await EnsureClassPackageLoadedAsync();
 
-                var stream = new MemoryStream(fileBytes);
+                if (IsBundleFile(fileBytes))
+                {
+                    LoadFromBundle(fileName, fileBytes);
+                }
+                else
+                {
+                    var stream = new MemoryStream(fileBytes);
 
-                // "memPath" é só um nome lógico usado internamente pela lib
-                // para resolver dependências entre arquivos; não precisa
-                // existir de verdade no disco (não existe disco aqui).
-                CurrentFile = Manager.LoadAssetsFile(stream, fileName, true);
+                    // "memPath" é só um nome lógico usado internamente pela
+                    // lib para resolver dependências entre arquivos; não
+                    // precisa existir de verdade no disco (não existe disco
+                    // aqui).
+                    CurrentFile = Manager.LoadAssetsFile(stream, fileName, true);
+                }
+
                 CurrentFileName = fileName;
 
                 // Carrega os tipos (GameObject, Transform, etc.) para a
                 // versão de engine específica deste arquivo.
-                Manager.LoadClassDatabaseFromPackage(CurrentFile.file.Metadata.UnityVersion);
+                Manager.LoadClassDatabaseFromPackage(CurrentFile!.file.Metadata.UnityVersion);
 
                 PopulateRows();
                 return true;
@@ -78,6 +91,39 @@ namespace UABEA.Web.Services
                 CurrentFile = null;
                 return false;
             }
+        }
+
+        // AssetBundles da Unity começam com uma dessas assinaturas ASCII,
+        // independentemente da extensão do arquivo (.bundle, .unity3d, ou
+        // até .assets como no caso de brody_tex_low.assets).
+        private static bool IsBundleFile(byte[] bytes)
+        {
+            if (bytes.Length < 8) return false;
+            string sig = System.Text.Encoding.ASCII.GetString(bytes, 0, 7);
+            return sig is "UnityFS" or "UnityWe" or "UnityRa";
+        }
+
+        // Carrega um AssetBundle e extrai o primeiro .assets serializado
+        // de dentro dele. NOTA PARA QUEM FOR COMPILAR: não confirmei nesta
+        // sessão (sem SDK instalado) o nome exato de todos os overloads
+        // abaixo; são os métodos documentados na wiki da AssetsTools.NET
+        // para esse fluxo (LoadBundleFile -> LoadAssetsFileFromBundle).
+        // Bundles com múltiplos .assets internos: por ora só o primeiro é
+        // carregado (bundles de textura única, como este caso, normalmente
+        // só têm um).
+        private void LoadFromBundle(string fileName, byte[] fileBytes)
+        {
+            var bundleStream = new MemoryStream(fileBytes);
+            var bundleInst = Manager.LoadBundleFile(bundleStream, fileName);
+
+            var assetsFileName = bundleInst.file.BlockAndDirInfo.DirectoryInfos
+                .FirstOrDefault(d => !d.Name.EndsWith(".resS") && !d.Name.EndsWith(".resource"))
+                ?.Name;
+
+            if (assetsFileName == null)
+                throw new InvalidOperationException("Nenhum arquivo .assets encontrado dentro do bundle.");
+
+            CurrentFile = Manager.LoadAssetsFileFromBundle(bundleInst, assetsFileName, true);
         }
 
         private void PopulateRows()
@@ -177,7 +223,7 @@ namespace UABEA.Web.Services
 
                 if (imageData == null || imageData.Length == 0)
                 {
-                    TextureError = "Os dados da imagem estão vazios neste asset — provavelmente a textura é 'streamed' (m_StreamData aponta pra um .resS externo), que ainda não é suportado nesta versão.";
+                    TextureError = "Os dados da imagem estão vazios neste asset — provavelmente a textura é 'streamed' (m_StreamData aponta pra um arquivo .resS externo dentro do mesmo bundle), que ainda não é lido automaticamente nesta versão.";
                     return null;
                 }
 
